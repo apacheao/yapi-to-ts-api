@@ -72,6 +72,12 @@ export class APIGenerator {
     try {
       console.log('开始生成API文件');
       
+      // 在Vercel环境中使用/tmp目录
+      if (process.env.VERCEL) {
+        console.log('在Vercel环境中运行，使用/tmp目录');
+        this.config.outputPath = '/tmp/generated';
+      }
+      
       // 创建输出目录（如果不存在）
       if (!fs.existsSync(this.config.outputPath)) {
         fs.mkdirSync(this.config.outputPath, { recursive: true });
@@ -99,6 +105,12 @@ export class APIGenerator {
   }
 
   private cleanGeneratedFiles() {
+    // 在Vercel环境中不执行文件操作
+    if (process.env.VERCEL) {
+      console.log('在Vercel环境中跳过文件清理');
+      return;
+    }
+    
     const typesPath = path.join(this.config.outputPath, 'types.ts');
     const apiPath = path.join(this.config.outputPath, 'api.ts');
 

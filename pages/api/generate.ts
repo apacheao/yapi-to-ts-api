@@ -23,7 +23,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(400).json({ error: '缺少必要参数' });
     }
 
-    const outputPath = './generated';
+    // 在Vercel环境中使用内存路径
+    const outputPath = process.env.VERCEL ? '/tmp/generated' : './generated';
 
     const generator = new APIGenerator({
       baseUrl,
