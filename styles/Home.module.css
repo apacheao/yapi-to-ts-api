@@ -1,0 +1,44 @@
+#container {
+  width: 60%;
+  margin: 0 auto;
+  min-height: 100vh;
+  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  background-color: #f5f5f5;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.card {
+  width: 100%;
+  max-width: 600px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  margin-bottom: 2rem;
+}
+
+.codeContainer {
+  margin-top: 2rem;
+  border-top: 1px solid #f0f0f0;
+  padding-top: 1rem;
+}
+
+.codeBlock {
+  background: #f6f8fa;
+  padding: 1rem;
+  border-radius: 6px;
+  overflow: auto;
+  max-height: 500px;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
+  font-size: 14px;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.codeBlock code {
+  white-space: pre;
+  word-break: normal;
+  word-wrap: normal;
+} 
