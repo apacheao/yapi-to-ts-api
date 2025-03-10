@@ -1,0 +1,25 @@
+{
+  "token": "3cac183314c14d0d66c1d5c7657775ccd0a28df6be9399285a6962450746a213",
+  "apis": [
+    {
+      "interfaceUrl": "https://yapi.cht-group.net/project/407/interface/api/15459",
+      "mockUrl": "https://yapi.cht-group.net/mock/407/after-sales-service/afterSales/v1/getAfterSalesOrderDetailList",
+      "outputDir": "src/api/afterSalesOrder"
+    },
+    {
+      "interfaceUrl": "https://yapi.cht-group.net/project/407/interface/api/15450",
+      "mockUrl": "https://yapi.cht-group.net/mock/407/after-sales-service/afterSales/v1/getAfterSalesOrderDetail",
+      "outputDir": "src/api/afterSales"
+    },
+    {
+      "interfaceUrl": "https://yapi.cht-group.net/project/407/interface/api/15459",
+      "mockUrl": "https://yapi.cht-group.net/mock/407/after-sales-service/afterSales/v1/getAfterSalesOrderDetailList",
+      "outputDir": "src/api/afterSalesOrder"
+    },
+    {
+      "interfaceUrl": "https://yapi.cht-group.net/project/407/interface/api/15459",
+      "mockUrl": "https://yapi.cht-group.net/mock/407/after-sales-service/afterSales/v1/getAfterSalesOrderDetailList",
+      "outputDir": "src/api/afterSalesOrder"
+    }
+  ]
+}

@@ -1,7 +1,17 @@
 {
-  "name": "yapi-to-ts-api",
-  "version": "1.0.0",
-  "description": "A tool to generate TypeScript definitions and API requests from YAPI",
+  "name": "yapi-to-ts-vscode",
+  "displayName": "YAPI TypeScript Generator",
+  "description": "Generate TypeScript definitions and API requests from YAPI",
+  "version": "0.1.0",
+  "publisher": "zhiqiangao",
+  "author": {
+    "name": "Zhiqian Gao",
+    "email": "zhiqiangao@example.com"
+  },
+  "icon": "images/icon.png",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
@@ -16,7 +26,6 @@
     "api",
     "generator"
   ],
-  "author": "",
   "license": "ISC",
   "dependencies": {
     "@ant-design/cssinjs": "^1.18.4",
