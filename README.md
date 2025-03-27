@@ -1,119 +1,100 @@
-# YAPI TypeScript 生成器
+# YAPI TypeScript Generator
 
-这是一个基于 YAPI 接口文档自动生成 TypeScript 类型定义和 API 请求函数的工具。
+这是一个VSCode扩展，用于从YAPI接口生成TypeScript类型定义和API请求代码。
 
-## 功能特点
+## 功能
 
-- 自动解析 YAPI 接口文档
-- 生成 TypeScript 类型定义
-- 生成 API 请求函数
-- 支持嵌套对象和复杂数据结构
-- 友好的用户界面
+- 从YAPI接口生成TypeScript类型定义
+- 生成对应的API请求代码
+- 支持复杂的嵌套类型
+- 自动处理路径参数和查询参数
+- 支持配置文件批量生成API
+- 支持右键菜单快速操作
 
-## 本地开发
+## 使用方法
 
-### 环境要求
+### 使用配置文件
 
-- Node.js 14.x 或更高版本
-- npm 或 yarn
+1. 在VSCode中安装此扩展
+2. 右键点击资源管理器中的任意位置，选择"YAPI: 创建配置文件"
+3. 编辑生成的`yapi-config.json`文件，填入您的YAPI接口信息：
+   ```json
+   {
+     "token": "你的项目token",
+     "apis": [
+       {
+         "name": "user",
+         "interfaceUrl": "https://yapi.example.com/project/123/interface/api/456",
+         "mockUrl": "https://yapi.example.com/mock/123/api/user",
+         "outputDir": "src/api/user"
+       },
+       {
+         "name": "product",
+         "interfaceUrl": "https://yapi.example.com/project/123/interface/api/789",
+         "mockUrl": "https://yapi.example.com/mock/123/api/product",
+         "outputDir": "src/api/product"
+       }
+     ]
+   }
+   ```
+4. 右键点击`yapi-config.json`文件，选择"YAPI: 从配置文件生成API"
+5. 如果配置文件中有多个API，您可以选择要生成的API
+6. 扩展将在指定的输出目录下生成TypeScript类型定义和API请求代码
 
-### 安装依赖
 
-```bash
-npm install
-# 或
-yarn install
+## 配置文件说明
+
+`yapi-config.json` 文件支持以下配置项：
+
+- `token`：项目Token（必填）
+- `apis`：要生成的API列表
+  - `name`：API名称，用于生成文件夹名称
+  - `interfaceUrl`：YAPI接口详情URL
+  - `mockUrl`：YAPI Mock URL
+  - `outputDir`：输出目录（可选，默认为 `generated/{name}`）
+
+## 示例
+
+生成的类型定义示例：
+
+```typescript
+export interface UserGetRes {
+  /** 用户ID */
+  id: number;
+  /** 用户名 */
+  username: string;
+  /** 邮箱 */
+  email?: string;
+  /** 角色列表 */
+  roles: string[];
+}
 ```
 
-### 启动开发服务器
+生成的API请求代码示例：
 
-```bash
-npm run dev
-# 或
-yarn dev
+```typescript
+import axios from 'axios';
+import { UserGetRes } from './types';
+
+/**
+ * 获取用户信息
+ * @description /api/user
+ */
+export async function getUserInfo(baseUrl = 'https://api.example.com') {
+  const response = await axios.get<UserGetRes>(`${baseUrl}/api/user`);
+  return response.data;
+}
 ```
 
-然后在浏览器中访问 http://localhost:3000
+## 要求
 
-## 部署到线上环境
+- VSCode 1.60.0 或更高版本
 
-### 方法一：使用 Vercel 部署（推荐）
+## 安装
 
-1. 在 GitHub 上创建一个仓库并推送代码
-2. 在 [Vercel](https://vercel.com) 上注册账号
-3. 导入 GitHub 仓库
-4. 点击部署
+### 从VSIX文件安装
 
-### 方法二：使用 Docker 部署
-
-1. 创建 Dockerfile
-
-```dockerfile
-FROM node:16-alpine AS builder
-WORKDIR /app
-COPY package*.json ./
-RUN npm install
-COPY . .
-RUN npm run build
-
-FROM node:16-alpine AS runner
-WORKDIR /app
-COPY --from=builder /app/next.config.js ./
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/.next ./.next
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package.json ./package.json
-
-EXPOSE 3000
-CMD ["npm", "start"]
-```
-
-2. 构建 Docker 镜像
-
-```bash
-docker build -t yapi-typescript-generator .
-```
-
-3. 运行 Docker 容器
-
-```bash
-docker run -p 3000:3000 yapi-typescript-generator
-```
-
-### 方法三：使用传统服务器部署
-
-1. 构建生产版本
-
-```bash
-npm run build
-# 或
-yarn build
-```
-
-2. 启动生产服务器
-
-```bash
-npm start
-# 或
-yarn start
-```
-
-## 使用说明
-
-1. 访问部署好的网站
-2. 填写 YAPI 接口详情 URL（从 YAPI 接口详情页面复制）
-3. 填写 YAPI Mock URL（从 YAPI 接口详情页面的 Mock 地址复制）
-4. 填写项目 Token（在 YAPI 项目设置中可以找到）
-5. 点击"生成 API 文件"按钮
-6. 查看生成的类型定义和 API 请求函数
-7. 复制代码到你的项目中使用
-
-## 注意事项
-
-- 确保 YAPI 服务器可以从部署环境访问
-- 项目 Token 用于访问私有项目的接口
-- 生成的代码需要根据项目实际情况进行适当调整
-
-## 许可证
-
-MIT 
+1. 下载最新的 `.vsix` 文件
+2. 在VSCode中，打开命令面板（按下 `Ctrl+Shift+P` 或 `Cmd+Shift+P`）
+3. 输入 `Extensions: Install from VSIX...` 并选择该命令
+4. 选择下载的 `.vsix` 文件

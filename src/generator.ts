@@ -1,7 +1,16 @@
 import axios from 'axios';
-import fs from 'fs';
-import path from 'path';
-import { YAPIConfig, defaultConfig } from './config';
+
+// 生成器配置接口
+export interface YAPIConfig {
+  /** 接口ID */
+  interfaceId: number;
+  /** 项目token */
+  token?: string;
+  /** API路径 */
+  path: string;
+  /** 输出目录 */
+  outputPath: string;
+}
 
 // JSON Schema 属性类型
 interface JSONSchemaProperty {
@@ -18,14 +27,7 @@ interface JSONSchema {
   type: string;
   properties?: Record<string, JSONSchemaProperty>;
   required?: string[];
-}
-
-interface QueryParam {
-  name: string;
-  required: string | boolean;
-  example?: string;
-  desc?: string;
-  type: string;
+  items?: JSONSchemaProperty;
 }
 
 // YAPI接口参数类型
@@ -65,33 +67,17 @@ export class APIGenerator {
   private generatedTypes: Set<string> = new Set();
 
   constructor(config: YAPIConfig) {
-    this.config = { ...defaultConfig, ...config };
+    this.config = config;
   }
 
   async generate() {
     try {
-      console.log('开始生成API文件');
-      
-      // 在Vercel环境中使用/tmp目录
-      if (process.env.VERCEL) {
-        console.log('在Vercel环境中运行，使用/tmp目录');
-        this.config.outputPath = '/tmp/generated';
-      }
-      
-      // 创建输出目录（如果不存在）
-      if (!fs.existsSync(this.config.outputPath)) {
-        fs.mkdirSync(this.config.outputPath, { recursive: true });
-      }
-
       // 获取接口详情
       const apiDetail = await this.fetchAPIDetail();
-      console.log('接口详情获取成功，开始生成代码');
 
       // 生成类型定义和API请求代码
       const typeDefinition = this.generateTypes(apiDetail);
       const apiRequest = this.generateAPI(apiDetail);
-
-      console.log('代码生成成功');
 
       // 返回生成的代码
       return {
@@ -99,262 +85,299 @@ export class APIGenerator {
         apiRequest
       };
     } catch (error) {
-      console.error('生成失败:', error);
       throw error;
-    }
-  }
-
-  private cleanGeneratedFiles() {
-    // 在Vercel环境中不执行文件操作
-    if (process.env.VERCEL) {
-      console.log('在Vercel环境中跳过文件清理');
-      return;
-    }
-    
-    const typesPath = path.join(this.config.outputPath, 'types.ts');
-    const apiPath = path.join(this.config.outputPath, 'api.ts');
-
-    if (fs.existsSync(typesPath)) {
-      fs.unlinkSync(typesPath);
-      console.log('已删除旧的类型定义文件');
-    }
-
-    if (fs.existsSync(apiPath)) {
-      fs.unlinkSync(apiPath);
-      console.log('已删除旧的API请求文件');
     }
   }
 
   async fetchAPIDetail() {
     try {
-      console.log('开始获取接口详情，参数:', {
-        baseUrl: this.config.baseUrl,
-        interfaceId: this.config.interfaceId,
-        token: this.config.token
-      });
-
-      // 确保baseUrl没有尾部斜杠
-      const baseUrl = this.config.baseUrl.endsWith('/')
-        ? this.config.baseUrl.slice(0, -1)
-        : this.config.baseUrl;
-
-      // 构建API请求URL
-      const url = `${baseUrl}/api/interface/get?id=${this.config.interfaceId}${
-        this.config.token ? `&token=${this.config.token}` : ''
-      }`;
-
-      console.log('请求接口详情URL:', url);
-
-      // 发送请求获取接口详情
-      const response = await axios.get(url);
+      // 构建接口详情请求URL
+      const url = `https://yapi.cht-group.net/api/interface/get`;
       
-      console.log('接口详情响应状态:', response.status);
-
-      if (response.status !== 200) {
-        throw new Error(`请求失败，状态码: ${response.status}`);
-      }
-
-      const { data } = response;
-
-      if (data.errcode !== 0) {
-        throw new Error(`获取接口详情失败: ${data.errmsg}`);
-      }
-
-      console.log('接口详情获取成功');
-      
-      // 使用配置中提供的路径
-      const apiPath = this.config.path;
-      console.log('使用API路径:', apiPath);
-
-      return {
-        ...data.data,
-        path: apiPath
+      const params: any = {
+        id: this.config.interfaceId
       };
-    } catch (error) {
-      console.error('获取接口详情失败:', error);
-      if (error instanceof Error) {
-        throw new Error(`获取接口详情失败: ${error.message}`);
+      
+      // 如果有token，添加到请求参数中
+      if (this.config.token) {
+        params.token = this.config.token;
       }
-      throw new Error('获取接口详情失败');
+      
+      const response = await axios.get<YAPIResponse<YAPIInterface>>(url, { params });
+      
+      if (response.data.errcode !== 0) {
+        throw new Error(`获取接口详情失败: ${response.data.errmsg}`);
+      }
+      
+      return response.data.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        if (error.response) {
+          throw new Error(`获取接口详情失败: ${error.response.status} ${error.response.statusText}`);
+        } else if (error.request) {
+          throw new Error('获取接口详情失败: 无法连接到YAPI服务器');
+        } else {
+          throw new Error(`获取接口详情失败: ${error.message}`);
+        }
+      }
+      throw error;
     }
   }
 
   generateTypes(apiInterface: YAPIInterface): string {
     try {
-      console.log('开始生成类型定义');
+      let output = '';
       
-      let content = `/**
- * 接口名称: ${apiInterface.title}
- * 接口路径: ${apiInterface.path}
- * 接口方法: ${apiInterface.method}
- */
-
-`;
-
+      // 重置已生成的类型集合
+      this.generatedTypes = new Set();
+      
       // 生成请求参数类型
-      const requestTypeName = this.getTypeName(apiInterface.path, apiInterface.method, 'Request');
-      let requestType = '';
-
-      // 处理请求体参数
       if (apiInterface.req_body_type === 'json' && apiInterface.req_body_other) {
-        try {
-          console.log('解析请求体:', typeof apiInterface.req_body_other);
-          
-          const reqBodyJson = typeof apiInterface.req_body_other === 'string'
-            ? JSON.parse(apiInterface.req_body_other)
-            : apiInterface.req_body_other;
-          
-          console.log('请求体解析结果:', {
-            type: reqBodyJson.type,
-            hasProperties: !!reqBodyJson.properties
-          });
-
-          if (reqBodyJson.type === 'object' && reqBodyJson.properties) {
-            requestType = this.generateTypeFromSchema(reqBodyJson, requestTypeName);
-          } else {
-            requestType = `export interface ${requestTypeName} {}\n`;
-          }
-        } catch (e) {
-          console.error('解析请求体JSON失败:', e);
-          requestType = `export interface ${requestTypeName} {}\n`;
+        let reqBodySchema: JSONSchema;
+        
+        if (typeof apiInterface.req_body_other === 'string') {
+          reqBodySchema = JSON.parse(apiInterface.req_body_other);
+        } else {
+          reqBodySchema = apiInterface.req_body_other;
         }
-      }
-
-      // 如果没有请求体，则使用查询参数
-      if (!requestType && apiInterface.req_query && apiInterface.req_query.length > 0) {
-        requestType = `export interface ${requestTypeName} {\n`;
-        apiInterface.req_query.forEach(param => {
-          const required = param.required === '1' ? '' : '?';
-          const type = this.getTypeFromProperty(param);
-          requestType += `  /** ${param.desc || ''} */\n`;
-          requestType += `  ${param.name}${required}: ${type};\n`;
-        });
-        requestType += '}\n';
-      }
-
-      // 如果没有请求体和查询参数，则创建空接口
-      if (!requestType) {
-        requestType = `export interface ${requestTypeName} {}\n`;
-      }
-
-      // 生成响应类型
-      const responseTypeName = this.getTypeName(apiInterface.path, apiInterface.method, 'Response');
-      let responseType = '';
-
-      if (apiInterface.res_body_type === 'json' && apiInterface.res_body) {
-        try {
-          console.log('解析响应体:', typeof apiInterface.res_body);
+        
+        const reqTypeName = this.getTypeName(apiInterface.path, apiInterface.method, 'Req');
+        output += this.generateTypeFromSchema(reqBodySchema, reqTypeName);
+        output += '\n\n';
+        
+        // 记录已生成的类型
+        this.generatedTypes.add(reqTypeName);
+      } else if (apiInterface.req_query && apiInterface.req_query.length > 0) {
+        const reqTypeName = this.getTypeName(apiInterface.path, apiInterface.method, 'Req');
+        
+        output += `export interface ${reqTypeName} {\n`;
+        
+        for (const param of apiInterface.req_query) {
+          const paramType = this.getTypeFromQueryParam(param);
+          const isRequired = param.required === '1' || param.required === true;
+          const optionalMark = isRequired ? '' : '?';
           
-          const resBodyJson = typeof apiInterface.res_body === 'string'
-            ? JSON.parse(apiInterface.res_body)
-            : apiInterface.res_body;
-          
-          console.log('响应体解析结果:', {
-            type: resBodyJson.type,
-            hasProperties: !!resBodyJson.properties
-          });
-
-          if (resBodyJson.type === 'object' && resBodyJson.properties) {
-            // 处理标准响应结构
-            responseType = this.generateTypeFromSchema(resBodyJson, responseTypeName);
-            
-            // 检查是否有data字段，并且data是对象类型
-            if (resBodyJson.properties.data && resBodyJson.properties.data.type === 'object') {
-              console.log('检测到data字段是对象类型，生成Data接口');
-              
-              // 为data字段生成单独的接口
-              const dataTypeName = `${responseTypeName}Data`;
-              const dataSchema = resBodyJson.properties.data;
-              
-              if (dataSchema.properties) {
-                const dataType = this.generateTypeFromSchema(
-                  { type: 'object', properties: dataSchema.properties, required: dataSchema.required },
-                  dataTypeName
-                );
-                
-                // 将data类型更新为具体的接口类型
-                responseType = responseType.replace(
-                  /data\?:\s*Record<string,\s*any>;/,
-                  `data?: ${dataTypeName};`
-                );
-                
-                // 添加data接口定义
-                responseType = dataType + '\n' + responseType;
-              }
-            }
-          } else {
-            responseType = `export interface ${responseTypeName} {}\n`;
+          if (param.desc) {
+            output += `  /** ${param.desc} */\n`;
           }
-        } catch (e) {
-          console.error('解析响应体JSON失败:', e);
-          responseType = `export interface ${responseTypeName} {}\n`;
+          
+          output += `  ${param.name}${optionalMark}: ${paramType};\n`;
         }
-      } else {
-        responseType = `export interface ${responseTypeName} {}\n`;
+        
+        output += '}\n\n';
+        
+        // 记录已生成的类型
+        this.generatedTypes.add(reqTypeName);
       }
-
-      content += requestType + '\n' + responseType;
       
-      console.log('类型定义生成成功');
-      return content;
+      // 生成响应类型
+      if (apiInterface.res_body_type === 'json' && apiInterface.res_body) {
+        let resBodySchema: JSONSchema;
+        
+        if (typeof apiInterface.res_body === 'string') {
+          resBodySchema = JSON.parse(apiInterface.res_body);
+        } else {
+          resBodySchema = apiInterface.res_body;
+        }
+        
+        const resTypeName = this.getTypeName(apiInterface.path, apiInterface.method, 'Res');
+        output += this.generateTypeFromSchema(resBodySchema, resTypeName);
+        
+        // 记录已生成的类型
+        this.generatedTypes.add(resTypeName);
+      }
+      
+      return output;
     } catch (error) {
-      console.error('生成类型定义失败:', error);
-      throw error;
+      throw new Error(`生成类型定义失败: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
   generateAPI(apiInterface: YAPIInterface): string {
     try {
-      console.log('开始生成API请求函数');
-      
-      const functionName = this.getFunctionName(apiInterface.path, apiInterface.method);
-      const requestTypeName = this.getTypeName(apiInterface.path, apiInterface.method, 'Request');
-      const responseTypeName = this.getTypeName(apiInterface.path, apiInterface.method, 'Response');
       const method = apiInterface.method.toLowerCase();
-      const path = apiInterface.path;
-
-      let content = `/**
- * ${apiInterface.title}
- * @description ${apiInterface.title}
- * @param data 请求参数
- * @returns Promise<${responseTypeName}>
- */
-export function ${functionName}(data: ${requestTypeName}): Promise<${responseTypeName}> {
-  return request({
-    url: '${path}',
-    method: '${method}',
-    ${method.toLowerCase() === 'get' ? 'params: data' : 'data'}
-  });
-}
-
-/**
- * 使用示例:
- * 
- * import { ${functionName} } from './api';
- * 
- * // 调用接口
- * const response = await ${functionName}({
- *   // 请求参数
- * });
- * console.log(response);
- */
-`;
-
-      console.log('API请求函数生成成功');
-      return content;
+      const functionName = this.getFunctionName(apiInterface.path, apiInterface.method);
+      const reqTypeName = this.getTypeName(apiInterface.path, apiInterface.method, 'Req');
+      const resTypeName = this.getTypeName(apiInterface.path, apiInterface.method, 'Res');
+      
+      let hasRequestBody = apiInterface.req_body_type === 'json' && apiInterface.req_body_other;
+      let hasQueryParams = apiInterface.req_query && apiInterface.req_query.length > 0;
+      
+      let output = '';
+      
+      // 导入类型
+      output += `import axios from 'axios';\n`;
+      
+      // 导入请求和响应类型
+      if (hasRequestBody || hasQueryParams) {
+        output += `import { ${reqTypeName} } from './types';\n`;
+      }
+      
+      output += `import { ${resTypeName} } from './types';\n`;
+      
+      output += '\n';
+      
+      // 生成API函数
+      output += `/**\n`;
+      output += ` * ${apiInterface.title}\n`;
+      output += ` * @description ${apiInterface.path}\n`;
+      output += ` * @method ${apiInterface.method.toUpperCase()}\n`;
+      output += ` */\n`;
+      
+      // 提取路径的最后一部分作为API路径
+      const apiPath = this.config.path;
+      
+      if (hasRequestBody) {
+        output += `export async function ${functionName}(data: ${reqTypeName}) {\n`;
+        output += `  const response = await axios.${method}<${resTypeName}>('${apiPath}', data);\n`;
+        output += `  return response.data;\n`;
+        output += `}\n`;
+      } else if (hasQueryParams) {
+        output += `export async function ${functionName}(params: ${reqTypeName}) {\n`;
+        output += `  const response = await axios.${method}<${resTypeName}>('${apiPath}', { params });\n`;
+        output += `  return response.data;\n`;
+        output += `}\n`;
+      } else {
+        output += `export async function ${functionName}() {\n`;
+        output += `  const response = await axios.${method}<${resTypeName}>('${apiPath}');\n`;
+        output += `  return response.data;\n`;
+        output += `}\n`;
+      }
+      
+      return output;
     } catch (error) {
-      console.error('生成API请求函数失败:', error);
-      throw error;
+      throw new Error(`生成API请求代码失败: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
-  private getTypeFromQueryParam(param: QueryParam): string {
+  private getTypeName(path: string, method: string, suffix: string): string {
+    // 从路径中提取名称
+    const pathSegments = path.split('/').filter(Boolean);
+    const lastSegment = pathSegments.length > 0 ? pathSegments[pathSegments.length - 1] : 'api';
+    
+    // 将路径转换为PascalCase
+    const nameParts = lastSegment.split(/[_\-\.]/).filter(Boolean);
+    let typeName = nameParts.map(part => part.charAt(0).toUpperCase() + part.slice(1)).join('');
+    
+    // 添加HTTP方法和后缀
+    typeName += method.charAt(0).toUpperCase() + method.slice(1).toLowerCase();
+    typeName += suffix;
+    
+    return typeName;
+  }
+
+  private getFunctionName(path: string, method: string): string {
+    // 从路径中提取名称
+    const pathSegments = path.split('/').filter(Boolean);
+    const lastSegment = pathSegments.length > 0 ? pathSegments[pathSegments.length - 1] : 'api';
+    
+    // 将路径转换为camelCase
+    const nameParts = lastSegment.split(/[_\-\.]/).filter(Boolean);
+    let functionName = nameParts[0].toLowerCase();
+    for (let i = 1; i < nameParts.length; i++) {
+      functionName += nameParts[i].charAt(0).toUpperCase() + nameParts[i].slice(1).toLowerCase();
+    }
+    
+    // 添加HTTP方法
+    functionName += method.toLowerCase();
+    
+    return functionName;
+  }
+
+  private generateTypeFromSchema(schema: JSONSchema, typeName: string): string {
+    let output = '';
+    
+    if (schema.type === 'object' && schema.properties) {
+      output += `export interface ${typeName} {\n`;
+      
+      for (const propName of Object.keys(schema.properties)) {
+        const prop = schema.properties[propName];
+        const isRequired = schema.required && schema.required.includes(propName);
+        const optionalMark = isRequired ? '' : '?';
+        
+        if (prop.description) {
+          output += `  /** ${prop.description} */\n`;
+        }
+        
+        if (prop.type === 'object' && prop.properties) {
+          // 生成嵌套对象类型
+          const nestedTypeName = typeName + this.capitalizeFirstLetter(propName);
+          
+          // 如果嵌套类型尚未生成，则生成它
+          if (!this.generatedTypes.has(nestedTypeName)) {
+            const nestedType = this.generateTypeFromSchema(prop, nestedTypeName);
+            output = nestedType + '\n\n' + output;
+            this.generatedTypes.add(nestedTypeName);
+          }
+          
+          output += `  ${propName}${optionalMark}: ${nestedTypeName};\n`;
+        } else if (prop.type === 'array' && prop.items) {
+          // 处理数组类型
+          let itemType: string;
+          
+          if (prop.items.type === 'object' && prop.items.properties) {
+            // 数组元素是对象
+            const nestedTypeName = typeName + this.capitalizeFirstLetter(propName) + 'Item';
+            
+            // 如果嵌套类型尚未生成，则生成它
+            if (!this.generatedTypes.has(nestedTypeName)) {
+              const nestedType = this.generateTypeFromSchema(prop.items, nestedTypeName);
+              output = nestedType + '\n\n' + output;
+              this.generatedTypes.add(nestedTypeName);
+            }
+            
+            itemType = nestedTypeName;
+          } else {
+            // 数组元素是基本类型
+            itemType = this.convertJsonTypeToTs(prop.items.type);
+          }
+          
+          output += `  ${propName}${optionalMark}: ${itemType}[];\n`;
+        } else {
+          // 基本类型
+          output += `  ${propName}${optionalMark}: ${this.convertJsonTypeToTs(prop.type)};\n`;
+        }
+      }
+      
+      output += '}';
+    } else if (schema.type === 'array' && schema.items) {
+      // 处理顶级数组
+      let itemType: string;
+      
+      if (schema.items.type === 'object' && schema.items.properties) {
+        // 数组元素是对象
+        const nestedTypeName = typeName + 'Item';
+        
+        // 如果嵌套类型尚未生成，则生成它
+        if (!this.generatedTypes.has(nestedTypeName)) {
+          const nestedType = this.generateTypeFromSchema(schema.items, nestedTypeName);
+          output = nestedType + '\n\n';
+          this.generatedTypes.add(nestedTypeName);
+        }
+        
+        itemType = nestedTypeName;
+      } else {
+        // 数组元素是基本类型
+        itemType = this.convertJsonTypeToTs(schema.items.type);
+      }
+      
+      output += `export type ${typeName} = ${itemType}[];`;
+    } else {
+      // 处理其他类型
+      output += `export type ${typeName} = ${this.convertJsonTypeToTs(schema.type)};`;
+    }
+    
+    return output;
+  }
+
+  private getTypeFromQueryParam(param: YAPIParameter): string {
+    if (!param.type || param.type === 'text') {
+      return 'string';
+    }
+    
     switch (param.type) {
-      case 'string':
-        return 'string';
       case 'number':
-      case 'integer':
-        return param.example?.includes('.') ? 'number' : 'number';
+        return 'number';
       case 'boolean':
         return 'boolean';
       default:
@@ -362,199 +385,31 @@ export function ${functionName}(data: ${requestTypeName}): Promise<${responseTyp
     }
   }
 
-  private getTypeFromProperty(prop: YAPIParameter | JSONSchemaProperty): string {
-    console.log('处理属性类型:', prop);
-    
-    // 处理YAPIParameter类型
-    if ('name' in prop) {
-      const type = prop.type?.toLowerCase() || 'string';
-      
-      if (type === 'text' || type === '文本') {
-        return 'string';
-      }
-      
-      if (type === 'integer' || type === 'number') {
-        return 'number';
-      }
-      
-      if (type === 'boolean') {
-        return 'boolean';
-      }
-      
-      return 'string';
-    }
-    
-    // 处理JSONSchemaProperty类型
-    const type = prop.type?.toLowerCase();
-    
-    if (!type) {
+  private convertJsonTypeToTs(jsonType?: string): string {
+    if (!jsonType) {
       return 'any';
     }
     
-    if (type === 'text' || type === '文本') {
-      return 'string';
-    }
-    
-    if (type === 'string') {
-      return 'string';
-    }
-    
-    if (type === 'integer' || type === 'number') {
-      // 处理特殊格式
-      if (prop.format === 'int64') {
-        return 'bigint';
-      }
-      if (prop.format === 'int32' || prop.format === 'int') {
+    switch (jsonType.toLowerCase()) {
+      case 'string':
+        return 'string';
+      case 'integer':
+      case 'number':
         return 'number';
-      }
-      return 'number';
-    }
-    
-    if (type === 'boolean') {
-      return 'boolean';
-    }
-    
-    if (type === 'array' && prop.items) {
-      if (typeof prop.items === 'object') {
-        // 处理数组项是对象的情况
-        if (prop.items.type === 'object' && prop.items.properties) {
-          return 'Record<string, any>[]';
-        }
-        const itemType = this.getTypeFromProperty(prop.items);
-        return `${itemType}[]`;
-      }
-      return 'any[]';
-    }
-    
-    if (type === 'object') {
-      if (prop.properties) {
-        // 这里我们不直接生成嵌套类型，而是在generateTypeFromSchema中处理
+      case 'boolean':
+        return 'boolean';
+      case 'array':
+        return 'any[]';
+      case 'object':
         return 'Record<string, any>';
-      }
-      return 'Record<string, any>';
+      case 'null':
+        return 'null';
+      default:
+        return 'any';
     }
-    
-    console.log('未知类型:', type);
-    return 'any';
   }
 
-  private generateTypeFromSchema(schema: JSONSchema, typeName: string): string {
-    console.log('生成类型定义:', { typeName, schemaType: schema.type });
-    
-    if (schema.type !== 'object' || !schema.properties) {
-      return `export interface ${typeName} {}\n`;
-    }
-    
-    let content = `export interface ${typeName} {\n`;
-    
-    // 处理所有属性
-    for (const [key, prop] of Object.entries(schema.properties)) {
-      const required = schema.required?.includes(key) ? '' : '?';
-      let type = '';
-      
-      // 处理嵌套对象
-      if (prop.type === 'object' && prop.properties) {
-        // 为嵌套对象创建子接口
-        const nestedTypeName = `${typeName}${this.capitalizeFirst(key)}`;
-        const nestedType = this.generateNestedType(prop, nestedTypeName);
-        
-        // 添加子接口定义
-        content = nestedType + '\n' + content;
-        type = nestedTypeName;
-      } else {
-        type = this.getTypeFromProperty(prop);
-      }
-      
-      const description = prop.description ? `/** ${prop.description} */\n  ` : '';
-      content += `  ${description}${key}${required}: ${type};\n`;
-    }
-    
-    content += '}\n';
-    return content;
-  }
-  
-  private generateNestedType(schema: JSONSchemaProperty, typeName: string): string {
-    console.log('生成嵌套类型:', { typeName, schemaType: schema.type });
-    
-    if (schema.type !== 'object' || !schema.properties) {
-      return `export interface ${typeName} {}\n`;
-    }
-    
-    let content = `export interface ${typeName} {\n`;
-    
-    // 处理所有属性
-    for (const [key, prop] of Object.entries(schema.properties)) {
-      const required = schema.required?.includes(key) ? '' : '?';
-      let type = '';
-      
-      // 处理嵌套对象
-      if (prop.type === 'object' && prop.properties) {
-        // 为嵌套对象创建子接口
-        const nestedTypeName = `${typeName}${this.capitalizeFirst(key)}`;
-        const nestedType = this.generateNestedType(prop, nestedTypeName);
-        
-        // 添加子接口定义
-        content = nestedType + '\n' + content;
-        type = nestedTypeName;
-      } else {
-        type = this.getTypeFromProperty(prop);
-      }
-      
-      const description = prop.description ? `/** ${prop.description} */\n  ` : '';
-      content += `  ${description}${key}${required}: ${type};\n`;
-    }
-    
-    content += '}\n';
-    return content;
-  }
-
-  private capitalizeFirst(str: string): string {
+  private capitalizeFirstLetter(str: string): string {
     return str.charAt(0).toUpperCase() + str.slice(1);
-  }
-
-  private getTypeName(path: string, method: string, suffix: string): string {
-    // 移除开头的斜杠，然后按斜杠分割
-    const parts = path.replace(/^\/+/, '').split('/');
-    
-    // 将路径部分转换为大驼峰格式
-    const typeParts = parts.map(part => {
-      // 处理带连字符的部分
-      return part.split(/[-_]/)
-        .map(s => s.charAt(0).toUpperCase() + s.slice(1))
-        .join('');
-    });
-
-    // 组合最终的类型名
-    const typeName = typeParts.join('') +
-      method.charAt(0).toUpperCase() +
-      method.slice(1).toLowerCase() +
-      suffix;
-    
-    console.log('生成类型名称:', { path, method, suffix, typeName });
-    return typeName;
-  }
-
-  private getFunctionName(path: string, method: string): string {
-    // 移除开头的斜杠，然后按斜杠分割
-    const parts = path.replace(/^\/+/, '').split('/');
-    
-    // 将路径部分转换为驼峰格式
-    const nameParts = parts.map((part, index) => {
-      // 处理带连字符的部分
-      const words = part.split(/[-_]/);
-      return words.map((word, wordIndex) => {
-        // 如果是第一个部分的第一个词，保持小写
-        if (index === 0 && wordIndex === 0) {
-          return word.toLowerCase();
-        }
-        return word.charAt(0).toUpperCase() + word.slice(1);
-      }).join('');
-    });
-
-    // 组合最终的函数名
-    const functionName = method.toLowerCase() + nameParts.join('');
-    
-    console.log('生成函数名称:', { path, method, functionName });
-    return functionName;
   }
 } 
